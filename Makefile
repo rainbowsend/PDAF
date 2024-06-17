@@ -394,10 +394,7 @@ SRC_PDAF =  $(SRC_PDAFOMI) $(SRC_PDAF_GEN) $(SRC_SEIK) $(SRC_LSEIK) $(SRC_SEEK) 
 	    $(SRC_ENKF) $(SRC_ETKF) $(SRC_LETKF) \
 	    $(SRC_ESTKF) $(SRC_LESTKF) $(SRC_LENKF) $(SRC_NETF) $(SRC_LNETF) \
 	    $(SRC_LKNETF) $(SRC_PF) $(SRC_OBSGEN) $(SRC_3DVAR_INI) \
-	    $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE)
-
-# external sources
-SRC_SANGOMA = $(EXTDIR)/SANGOMA/SANGOMA_quicksort.F90
+	    $(SRC_MOD_INTERFACE) $(SRC_MOD_PDAF)
 
 #######################################################
 # object files
@@ -405,8 +402,6 @@ SRC_SANGOMA = $(EXTDIR)/SANGOMA/SANGOMA_quicksort.F90
 OBJ_PDAF := $(SRC_PDAF:%.F90=$(OBJDIR)/%.o)
 
 OBJ_PDAF_VAR = $(SRC_3DVAR:%.F90=$(OBJDIR)/%.o)
-
-OBJ_SANGOMA = $(OBJDIR)/SANGOMA_quicksort.o
 
 # External optimizer libraries implicitly build by make
 OBJ_OPTIM = $(EXTDIR)/CG+_mpi/cgfam.o $(EXTDIR)/CG+_mpi/cgsearch.o \
@@ -445,11 +440,6 @@ $(LIBDIR)/libpdaf-var.a:  $(OBJ_PDAF) $(OBJ_PDAF_VAR) $(OBJ_OPTIM)
 # use pattern rule to create rules for all object files
 $(OBJDIR)/%.o: $(SRCDIR)/%.F90
 	$(info $(bold)compile $<$(sgr0))
-	$(COMPILE.f90) $<
-
-# explicite rule for sangoma
-$(OBJ_SANGOMA) : $(SRC_SANGOMA)
-	$(info $(bold)compile external dependency $<$(sgr0))
 	$(COMPILE.f90) $<
 
 #######################################################
