@@ -216,14 +216,17 @@ SUBROUTINE PDAF_estkf_analysis(step, dim_p, dim_obs_p, dim_ens, rank, &
 ! ************************
 
   CALL PDAF_timeit(12, 'new')
-  
-  haveobsB: IF (dim_obs_p > 0) THEN
+
+  ! tiegcm satellite date obs op for global filters must be called on all ranks for halo exchange
+  haveobsB: IF (dim_obs_p >= 0) THEN
      ! *** The residual only exists for domains with observations ***
 
      ALLOCATE(resid_p(dim_obs_p))
      ALLOCATE(obs_p(dim_obs_p))
      ALLOCATE(HXbar_p(dim_obs_p))
      IF (allocflag == 0) CALL PDAF_memcount(3, 'r', 3 * dim_obs_p)
+
+
 
      ! Project state onto observation space
      IF (debug>0) &

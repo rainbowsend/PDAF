@@ -3,29 +3,36 @@
 #######################################################
 # Generic Makefile for to build PDAF library          #
 # To choose the architecture set $PDAF_ARCH           #
+#                                                     #
 # Armin Corbin - University of Bonn                   #
 #######################################################
 
+#######################################################
+# definitions for highlighting outputs
 bold := $(shell tput bold)
 sgr0 := $(shell tput sgr0)
+
+#######################################################
 
 # Include machine-specific definitions
 # For available include files see directory make.arch
 # To choose a file, set PDAF_ARCH either here or by an
 # environment variable.
 include ./make.arch/$(PDAF_ARCH).h
+$(info $(bold)use machine-specific definitions in $(PDAF_ARCH).h$(sgr0))
+
+#######################################################
 
 OBJDIR:=build
 INCDIR:=include
 LIBDIR:=lib
-SRCDIR:=src
 
+SRCDIR:=src
 EXTDIR:=external
 
-
-######################################################
-# Define objects for PDAF library
-######################################################
+#######################################################
+# List of sources for PDAF library
+#######################################################
 
 # Modules used in PDAF
 SRC_MOD_PDAF =  PDAF_timer.F90 \
@@ -382,60 +389,81 @@ SRC_PDAFOMI =	PDAFomi_obs_f.F90 \
 		PDAFomi.F90 \
 		PDAFomi_callback.F90
 
+# collect all PDAF sources
 SRC_PDAF =  $(SRC_PDAFOMI) $(SRC_PDAF_GEN) $(SRC_SEIK) $(SRC_LSEIK) $(SRC_SEEK) \
 	    $(SRC_ENKF) $(SRC_ETKF) $(SRC_LETKF) \
 	    $(SRC_ESTKF) $(SRC_LESTKF) $(SRC_LENKF) $(SRC_NETF) $(SRC_LNETF) \
-	    $(SRC_LKNETF) $(SRC_PF) $(SRC_OBSGEN) $(SRC_3DVAR_INI)
+	    $(SRC_LKNETF) $(SRC_PF) $(SRC_OBSGEN) $(SRC_3DVAR_INI) \
+	    $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE)
 
+# external sources
+SRC_SANGOMA = $(EXTDIR)/SANGOMA/SANGOMA_quicksort.F90
+
+#######################################################
+# object files
+#######################################################
 OBJ_PDAF := $(SRC_PDAF:%.F90=$(OBJDIR)/%.o)
-
-OBJ_MOD_PDAF := $(SRC_MOD_PDAF:%.F90=$(OBJDIR)/%.o)
-OBJ_MOD_INTERFACE := $(SRC_MOD_INTERFACE:%.F90=$(OBJDIR)/%.o)
 
 OBJ_PDAF_VAR = $(SRC_3DVAR:%.F90=$(OBJDIR)/%.o)
 
-# External optimizer libraries
+OBJ_SANGOMA = $(OBJDIR)/SANGOMA_quicksort.o
+
+# External optimizer libraries implicitly build by make
 OBJ_OPTIM = $(EXTDIR)/CG+_mpi/cgfam.o $(EXTDIR)/CG+_mpi/cgsearch.o \
 	$(EXTDIR)/CG+/cgfam.o $(EXTDIR)/CG+/cgsearch.o \
 	$(EXTDIR)/LBFGS/lbfgsb.o $(EXTDIR)/LBFGS/linpack.o \
 	$(EXTDIR)/LBFGS/timer.o
 
-######################################################
+#######################################################
+# compiler instructions
 
-.Phony: directories
+ifeq ($(FC), mpif90) # gfortran
+COMPILE.f90 = $(FC) $(OPT) $(MPI_INC) $(CPP_DEFS) -c -o $@ -J $(INCDIR)
+else ifeq ($(FC), mpiifort) # intel
+COMPILE.f90 = $(FC) $(OPT) $(MPI_INC) $(CPP_DEFS) -c -o $@ -module $(INCDIR)
+endif
 
-.Phony: all
+#######################################################
+.PHONY: all
 all: directories libpdaf libpdafvar
 
-.Phony: modules
-modules: $(OBJ_MOD_PDAF)
+.PHONY: libpdaf
+libpdaf: $(LIBDIR)/libpdaf-d.a
 
+.PHONY: libpdafvar
+libpdafvar: $(LIBDIR)/libpdaf-var.a
+#######################################################
 
-libpdaf: $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE) $(OBJ_PDAF)
-	$(info $(bold) Generate Filter library $<$(sgr0))
-	$(AR) rs $(AR_SPEC) $(LIBDIR)/libpdaf-d.a $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE) $(OBJ_PDAF)
+$(LIBDIR)/libpdaf-d.a: $(OBJ_PDAF) $(OBJ_SANGOMA)
+	$(info $(bold)Generate Filter library$(sgr0))
+	$(AR) rs $(AR_SPEC) $(LIBDIR)/libpdaf-d.a $(OBJ_PDAF) $(OBJ_SANGOMA)
 
-libpdafvar: $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE) $(OBJ_PDAF) $(OBJ_PDAF_VAR) $(OBJ_OPTIM)
-	$(info $(bold) Generate Var Filter library $<$(sgr0))
-	$(AR) rs $(AR_SPEC) $(LIBDIR)/libpdaf-var.a $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE) $(OBJ_PDAF) $(OBJ_PDAF_VAR) $(OBJ_OPTIM)
+$(LIBDIR)/libpdaf-var.a:  $(OBJ_PDAF) $(OBJ_PDAF_VAR) $(OBJ_OPTIM)
+	$(info $(bold)Generate Var Filter library$(sgr0))
+	$(AR) rs $(AR_SPEC) $(LIBDIR)/libpdaf-var.a $(OBJ_PDAF) $(OBJ_PDAF_VAR) $(OBJ_OPTIM)
 
-COMPILE.f90 = $(FC) $(OPT) $(MPI_INC) $(CPP_DEFS) -c -o $@ -J $(INCDIR)
-
-# use static pattern rule to create rules for object files
-$(OBJ_PDAF) $(OBJ_MOD_PDAF) $(OBJ_MOD_INTERFACE) $(OBJ_PDAF_VAR): $(OBJDIR)/%.o: $(SRCDIR)/%.F90
-# 	$(info $(bold)compile $<$(sgr0))
+# use pattern rule to create rules for all object files
+$(OBJDIR)/%.o: $(SRCDIR)/%.F90
+	$(info $(bold)compile $<$(sgr0))
 	$(COMPILE.f90) $<
 
-directories:
-	mkdir -p $(INCDIR)
-	mkdir -p $(OBJDIR)
-	mkdir -p $(LIBDIR)
+# explicite rule for sangoma
+$(OBJ_SANGOMA) : $(SRC_SANGOMA)
+	$(info $(bold)compile external dependency $<$(sgr0))
+	$(COMPILE.f90) $<
 
-######################################################
-# Cleans
+#######################################################
+MISSINGDIRS:= $(INCDIR) $(OBJDIR) $(LIBDIR)
+.PHONY: directories
+directories: $(MISSINGDIRS)
 
-.Phony: clean
+$(MISSINGDIRS):
+	mkdir -p $@
+
+#######################################################
+.PHONY: clean
 clean :
+	$(info $(bold)clean PDAF$(sgr0))
 	rm -rf $(OBJDIR)/*.o
 	rm -rf $(INCDIR)/*.mod
 	rm -rf $(LIBDIR)/libpdaf-d.a
@@ -444,12 +472,20 @@ clean :
 	rm -rf $(EXTDIR)/CG+_mpi/*.o
 	rm -rf $(EXTDIR)/LBFGS/*.o
 
-######################################################
-# List arch files
-
+.PHONY: veryclean
+veryclean: clean
+	rm -r $(OBJDIR)
+	rm -r $(INCDIR)
+	rm -r $(LIBDIR)
+#######################################################
+.PHONY: listarch
 listarch:
 	@echo Available architecture-specific input files for PDAF_ARCH
 	@echo ---------------------------------------------------------
 	@ls -1 ../make.arch | cut -d"." -f1
 
+#######################################################
+# include file containing dependencies for parallel
+# execution of make
+# created with ./mkdepends ./src ./external/* '$(OBJDIR)'
 include Depends
