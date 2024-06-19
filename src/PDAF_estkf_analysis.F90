@@ -216,17 +216,14 @@ SUBROUTINE PDAF_estkf_analysis(step, dim_p, dim_obs_p, dim_ens, rank, &
 ! ************************
 
   CALL PDAF_timeit(12, 'new')
-
-  ! tiegcm satellite date obs op for global filters must be called on all ranks for halo exchange
-  haveobsB: IF (dim_obs_p >= 0) THEN
+  
+  haveobsB: IF (dim_obs_p > 0) THEN
      ! *** The residual only exists for domains with observations ***
 
      ALLOCATE(resid_p(dim_obs_p))
      ALLOCATE(obs_p(dim_obs_p))
      ALLOCATE(HXbar_p(dim_obs_p))
      IF (allocflag == 0) CALL PDAF_memcount(3, 'r', 3 * dim_obs_p)
-
-
 
      ! Project state onto observation space
      IF (debug>0) &
@@ -296,6 +293,31 @@ SUBROUTINE PDAF_estkf_analysis(step, dim_p, dim_obs_p, dim_ens, rank, &
         CALL PDAF_timeit(51, 'old')
      END IF
 
+  ELSE IF (dim_obs_p == 0) THEN
+
+     ! For OMI we need to call observation operator also for dim_obs_p=0
+     ! in order to initialize the pointer to the observation types
+     IF (.NOT.observe_ens) THEN
+        IF (omi_n_obstypes>0) THEN
+           ALLOCATE(HXbar_p(1))
+           obs_member = 0
+
+           ! [Hx_1 ... Hx_N]
+           CALL U_obs_op(step, dim_p, dim_obs_p, state_p, HXbar_p)
+
+           DEALLOCATE(HXbar_p)
+        ELSE
+           ALLOCATE(HL_p(1,1))
+           DO member = 1, dim_ens
+              ! Store member index to make it accessible with PDAF_get_obsmemberid
+              obs_member = member
+
+              ! [Hx_1 ... Hx_N]
+              CALL U_obs_op(step, dim_p, dim_obs_p, ens_p(:, member), HL_p(:, member))
+           END DO
+           DEALLOCATE(HL_p)
+        END IF
+     END IF
   END IF haveobsB
 
   CALL PDAF_timeit(12, 'old')
@@ -415,13 +437,17 @@ SUBROUTINE PDAF_estkf_analysis(step, dim_p, dim_obs_p, dim_ens, rank, &
      ! For OMI we need to call observation operator also for dim_obs_p=0
      ! in order to initialize the pointer to the observation types
      IF (omi_n_obstypes>0) THEN
-        ALLOCATE(HL_p(1, 1))
-        obs_member = 1
+        IF (.NOT.observe_ens) THEN
+           ALLOCATE(HL_p(1,1))
+           DO member = 1, dim_ens
+              ! Store member index to make it accessible with PDAF_get_obsmemberid
+              obs_member = member
 
-        ! [Hx_1 ... Hx_N]
-        CALL U_obs_op(step, dim_p, dim_obs_p, ens_p(:, 1), HL_p(:, 1))
-
-        DEALLOCATE(HL_p)
+              ! [Hx_1 ... Hx_N]
+              CALL U_obs_op(step, dim_p, dim_obs_p, ens_p(:, member), HL_p(:, member))
+           END DO
+           DEALLOCATE(HL_p)
+        END IF
      END IF
 
   END IF haveobsA
@@ -734,7 +760,7 @@ SUBROUTINE PDAF_estkf_analysis(step, dim_p, dim_obs_p, dim_ens, rank, &
      CALL PDAF_timeit(34, 'new')
      IF (type_sqrt == 1) THEN
         ! A = (Omega C^(-1)) by solving Ct A = OmegaT for A
-        CALL trtrsTYPE('l', 't', 'n', rank, dim_ens, &
+        CALL trtrsTYPE('L', 'T', 'N', rank, dim_ens, &
              tmp_Ainv, rank, OmegaT, rank, lib_info)
      ELSE
         ! TMP_AINV already contains matrix C (no more inversion)
